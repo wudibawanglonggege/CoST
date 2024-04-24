@@ -32,6 +32,7 @@ After training and evaluation, the trained encoder, output and evaluation metric
 Alternatively, you can directly run the python scripts:
 ```train & evaluate
 python train.py <dataset_name> <run_name> --archive <archive> --batch-size <batch_size> --repr-dims <repr_dims> --gpu <gpu> --eval
+python train.py WTH foreast_multivar --archive foreast_csv --batch-size 128 --repr-dims 320 --gpu 0 --eval
 ```
 The detailed descriptions about the arguments are as following:
 | Parameter name | Description of parameter |

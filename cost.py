@@ -248,13 +248,15 @@ class CoST:
         self.n_iters = 0
 
     def fit(self, train_data, n_epochs=None, n_iters=None, verbose=False):
-        assert train_data.ndim == 3
+        assert train_data.ndim == 3  # (1, 21038, 19)
 
+        # epoch 表示完整训练所有训练样本的过程
+        # iter 表示每一个epoch 都会将样本分为若干个batch ； 训练数据集有 1000 个样本，每个批次处理 100 个样本，那么完成一个 epoch 需要进行 10 个迭代（1000/100=10）
         if n_iters is None and n_epochs is None:
             n_iters = 200 if train_data.size <= 100000 else 600
 
         if self.max_train_length is not None:
-            sections = train_data.shape[1] // self.max_train_length
+            sections = train_data.shape[1] // self.max_train_length # 向下取整
             if sections >= 2:
                 train_data = np.concatenate(split_with_nan(train_data, sections, axis=1), axis=0)
 
@@ -288,11 +290,11 @@ class CoST:
                     interrupted = True
                     break
 
-                x_q, x_k = map(lambda x: x.to(self.device), batch)
+                x_q, x_k = map(lambda x: x.to(self.device), batch)  # x_q x_k torch.Size([128, 203, 19]) 两个增强数据
                 if self.max_train_length is not None and x_q.size(1) > self.max_train_length:
                     window_offset = np.random.randint(x_q.size(1) - self.max_train_length + 1)
-                    x_q = x_q[:, window_offset : window_offset + self.max_train_length]
-                    x_k = x_k[:, window_offset : window_offset + self.max_train_length]
+                    x_q = x_q[:, window_offset : window_offset + self.max_train_length]  # torch.Size([128, 201, 19])
+                    x_k = x_k[:, window_offset : window_offset + self.max_train_length]  # torch.Size([128, 201, 19])
 
                 optimizer.zero_grad()
 
