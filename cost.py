@@ -100,10 +100,10 @@ class CoSTModel(nn.Module):
         self.register_buffer('queue', F.normalize(torch.randn(dim, K), dim=0))
         self.register_buffer('queue_ptr', torch.zeros(1, dtype=torch.long))
 
-
     def compute_loss(self, q, k, k_negs):
         # compute logits
         # positive logits: Nx1
+        # 'nc,nc->n' 是一个用于描述张量乘积操作的公式  ，两个形状相同的张量的按元素乘积，并在最后一个维度上对结果求和
         l_pos = torch.einsum('nc,nc->n', [q, k]).unsqueeze(-1)
         # negative logits: NxK
         l_neg = torch.einsum('nc,ck->nk', [q, k_negs])
@@ -138,12 +138,14 @@ class CoSTModel(nn.Module):
         loss = (logits[:, i, B + i - 1].mean() + logits[:, B + i, i].mean()) / 2
         return loss
 
+
     def forward(self, x_q, x_k):
         # compute query features
         rand_idx = np.random.randint(0, x_q.shape[1])
-
+        # q_t 趋势表征   q_s 频率表征
         q_t, q_s = self.encoder_q(x_q)
         if q_t is not None:
+            # 选中某个时间步 t = rand_idx，在q_t中切片数据，在第2维度上进行切片，取出所有在这一时间步的数据
             q_t = F.normalize(self.head_q(q_t[:, rand_idx]), dim=-1)
 
         # compute key features
@@ -151,20 +153,26 @@ class CoSTModel(nn.Module):
             self._momentum_update_key_encoder()  # update key encoder
             k_t, k_s = self.encoder_k(x_k)
             if k_t is not None:
+                # 获取到 k_t 类似于上边的步骤，获取到 k_t 与 q_t 进行对比损失
                 k_t = F.normalize(self.head_k(k_t[:, rand_idx]), dim=-1)
 
         loss = 0
 
+        # =====================********************************+=========================
+        # todo 下边的还没看 ======================================================================
+        # self.queue.clone().detach() 的结果是一个与 self.queue 张量具有相同数据但完全独立的新张量，并且该张量不再与计算图有关联，不再保留梯度信息。
         loss += self.compute_loss(q_t, k_t, self.queue.clone().detach())
         self._dequeue_and_enqueue(k_t)
 
         q_s = F.normalize(q_s, dim=-1)
         _, k_s = self.encoder_q(x_k)
         k_s = F.normalize(k_s, dim=-1)
-
+        # q_s：torch.Size([128, 201, 160])  q_s_freq=k_s_freq：torch.Size([128, 101, 160])
         q_s_freq = fft.rfft(q_s, dim=1)
         k_s_freq = fft.rfft(k_s, dim=1)
+        # q_s_amp = q_s_phase： torch.Size([128, 101, 160])
         q_s_amp, q_s_phase = self.convert_coeff(q_s_freq)
+        # # k_s_amp = k_s_phase： torch.Size([128, 101, 160])
         k_s_amp, k_s_phase = self.convert_coeff(k_s_freq)
 
         seasonal_loss = self.instance_contrastive_loss(q_s_amp, k_s_amp) + \
@@ -224,6 +232,7 @@ class CoST:
         if kernels is None:
             kernels = []
 
+        # 这里的 CoSTEncoder 是图示一整个，网络的输出是 两个：趋势表征，频率表征
         self.net = CoSTEncoder(
             input_dims=input_dims, output_dims=output_dims,
             kernels=kernels,
@@ -248,13 +257,15 @@ class CoST:
         self.n_iters = 0
 
     def fit(self, train_data, n_epochs=None, n_iters=None, verbose=False):
-        assert train_data.ndim == 3
+        assert train_data.ndim == 3  # (1, 21038, 19)
 
+        # epoch 表示完整训练所有训练样本的过程
+        # iter 表示每一个epoch 都会将样本分为若干个batch ； 训练数据集有 1000 个样本，每个批次处理 100 个样本，那么完成一个 epoch 需要进行 10 个迭代（1000/100=10）
         if n_iters is None and n_epochs is None:
             n_iters = 200 if train_data.size <= 100000 else 600
 
         if self.max_train_length is not None:
-            sections = train_data.shape[1] // self.max_train_length
+            sections = train_data.shape[1] // self.max_train_length # 向下取整
             if sections >= 2:
                 train_data = np.concatenate(split_with_nan(train_data, sections, axis=1), axis=0)
 
@@ -288,11 +299,11 @@ class CoST:
                     interrupted = True
                     break
 
-                x_q, x_k = map(lambda x: x.to(self.device), batch)
+                x_q, x_k = map(lambda x: x.to(self.device), batch)  # x_q x_k torch.Size([128, 203, 19]) 两个增强数据
                 if self.max_train_length is not None and x_q.size(1) > self.max_train_length:
                     window_offset = np.random.randint(x_q.size(1) - self.max_train_length + 1)
-                    x_q = x_q[:, window_offset : window_offset + self.max_train_length]
-                    x_k = x_k[:, window_offset : window_offset + self.max_train_length]
+                    x_q = x_q[:, window_offset : window_offset + self.max_train_length]  # torch.Size([128, 201, 19])
+                    x_k = x_k[:, window_offset : window_offset + self.max_train_length]  # torch.Size([128, 201, 19])
 
                 optimizer.zero_grad()
 

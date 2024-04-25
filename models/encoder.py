@@ -164,4 +164,14 @@ class CoSTEncoder(nn.Module):
             season.append(out)
         season = season[0]
 
-        return trend, self.repr_dropout(season)
+        season = self.repr_dropout(season)
+
+        frequency_trend_z = torch.cat([season,trend],dim=-1)
+        loss = 1
+        return trend, season, loss
+"""
+在这里计算对比学习损失  
+考虑增加一个time domain 和 frequency domain的对比学习，同一个样本的两种表示看作正对，不同的看作负对
+"""
+def time_frequency_contrastive_loss(self, T_z, F_z):
+        return
