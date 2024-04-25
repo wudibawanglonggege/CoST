@@ -139,19 +139,24 @@ class CoSTEncoder(nn.Module):
         x[~mask] = 0
 
         # conv encoder
+        # 图示中的 Backbone Encoder 获得中间表示 x
         x = x.transpose(1, 2)  # B x Ch x T
         x = self.feature_extractor(x)  # B x Co x T
 
         if tcn_output:
             return x.transpose(1, 2)
 
+        # ======================================================
+        # 下面的是 TFD趋势特征分解器，和 SFD季节性特征分解器 ，分别对中间表示 X进行处理
         trend = []
         for idx, mod in enumerate(self.tfd):
             out = mod(x)  # b d t
             if self.kernels[idx] != 1:
                 out = out[..., :-(self.kernels[idx] - 1)]
             trend.append(out.transpose(1, 2))  # b t d
+        # einops.reduce函数 ：对输入的张量进行降维操作。它可以对指定的维度进行求和、求积、取最大值等操作，并返回降维后的张量。
         trend = reduce(
+            # einops 库中的 rearrange 函数用于重新排列张量的维度顺序
             rearrange(trend, 'list b t d -> list b t d'),
             'list b t d -> b t d', 'mean'
         )
